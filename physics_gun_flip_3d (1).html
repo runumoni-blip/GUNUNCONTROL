@@ -1,0 +1,2117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flip Shot 3D - Wacky Physics Target Game</title>
+    <!-- Tailwind CSS for crisp UI overlays -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 for 3D rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800&family=Inter:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            box-sizing: border-box;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #c9bede;
+            font-family: 'Fredoka', 'Inter', sans-serif;
+        }
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        /* Crisp cartoon text stroke matching screenshot */
+        .stroke-text {
+            color: #ffffff;
+            text-shadow:
+                -2px -2px 0 #1a1a1a,
+                 2px -2px 0 #1a1a1a,
+                -2px  2px 0 #1a1a1a,
+                 2px  2px 0 #1a1a1a,
+                 0px  3px 0 #1a1a1a;
+        }
+        .cartoon-box {
+            background: #ffffff;
+            border: 3px solid #1a1a1a;
+            box-shadow: 0 4px 0 #1a1a1a;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+        .cartoon-box:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #1a1a1a;
+        }
+        .cartoon-pill {
+            background: #ffffff;
+            border: 2.5px solid #1a1a1a;
+            box-shadow: 0 3px 0 rgba(0,0,0,0.25);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        @keyframes floatHint {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .float-badge {
+            animation: floatHint 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden">
+
+    <!-- 3D WebGL Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Top HUD Overlay (Matches Screenshot Layout) -->
+    <div class="pointer-events-none absolute inset-x-0 top-0 p-3 sm:p-5 flex justify-between items-start z-20">
+        
+        <!-- Top-Left: Level Title + Restart & Sound Icons -->
+        <div class="flex flex-col items-start space-y-2 pointer-events-auto">
+            <div class="flex items-center space-x-3">
+                <h1 id="level-display" class="stroke-text text-2xl sm:text-4xl font-extrabold tracking-wide">
+                    Level 1
+                </h1>
+                <button id="btn-level-select" title="Switch Level / Scene" class="cartoon-pill px-2.5 py-1 rounded-full text-xs sm:text-sm font-bold text-slate-800 hover:bg-amber-100 active:scale-95 transition">
+                    Scenes ▾
+                </button>
+            </div>
+
+            <div class="flex items-center space-x-2.5 pt-0.5">
+                <!-- Restart Level Button -->
+                <button id="btn-restart" title="Restart Level (R)" class="w-11 h-11 sm:w-12 sm:h-12 rounded-full cartoon-box flex items-center justify-center bg-white hover:bg-slate-100">
+                    <svg class="w-6 h-6 sm:w-7 sm:h-7 text-slate-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                    </svg>
+                </button>
+
+                <!-- Sound Toggle Button -->
+                <button id="btn-sound" title="Toggle Sound" class="w-11 h-11 sm:w-12 sm:h-12 rounded-full cartoon-box flex items-center justify-center bg-white hover:bg-slate-100">
+                    <svg id="icon-sound-on" class="w-6 h-6 sm:w-7 sm:h-7 text-slate-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                    </svg>
+                    <svg id="icon-sound-off" class="w-6 h-6 sm:w-7 sm:h-7 text-red-600 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <line x1="23" y1="9" x2="17" y2="15"></line>
+                        <line x1="17" y1="9" x2="23" y2="15"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Top-Right: Gun Skin Chest + Eliminated Men Counter + Coin Counter -->
+        <div class="flex items-start space-x-2.5 sm:space-x-3 pointer-events-auto">
+            <!-- Weapon Skin Chest Icon (Matches Screenshot) -->
+            <button id="btn-skin" title="Change Gun Skin" class="w-12 h-11 sm:w-14 sm:h-12 rounded-xl cartoon-box flex flex-col items-center justify-center bg-white hover:bg-purple-50 relative">
+                <svg class="w-7 h-7 text-slate-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <rect x="3" y="5" width="18" height="14" rx="2" fill="#f8fafc"/>
+                    <line x1="3" y1="11" x2="21" y2="11"/>
+                    <rect x="10" y="9" width="4" height="4" rx="1" fill="#cbd5e1"/>
+                </svg>
+                <span id="skin-badge" class="absolute -bottom-2 px-1.5 py-0.2 bg-purple-600 text-white text-[9px] font-bold rounded-full border border-black">
+                    SKIN
+                </span>
+            </button>
+
+            <!-- Counters Stack -->
+            <div class="flex flex-col space-y-1.5">
+                <!-- Total Men Eliminated Pill -->
+                <div class="cartoon-pill rounded-full px-3 py-0.5 flex items-center justify-end space-x-2 min-w-[96px] sm:min-w-[115px]">
+                    <span id="total-hits-count" class="text-slate-900 font-extrabold text-base sm:text-lg tracking-tight">93</span>
+                    <!-- Stickman Head Icon -->
+                    <span class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-400 border-2 border-slate-900 flex items-center justify-center relative">
+                        <span class="w-1.5 h-1.5 bg-white rounded-full border border-slate-900 mr-0.5"></span>
+                        <span class="w-1.5 h-1.5 bg-white rounded-full border border-slate-900"></span>
+                    </span>
+                </div>
+
+                <!-- Total Coins Pill -->
+                <div class="cartoon-pill rounded-full px-3 py-0.5 flex items-center justify-end space-x-2 min-w-[96px] sm:min-w-[115px]">
+                    <span id="total-coins-count" class="text-slate-900 font-extrabold text-base sm:text-lg tracking-tight">1033</span>
+                    <!-- Coin Icon -->
+                    <span class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-400 border-2 border-slate-900 flex items-center justify-center">
+                        <span class="w-2.5 h-2.5 rounded-full bg-sky-400 border border-slate-900"></span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Remaining Targets Indicator Bar (Top Center) -->
+    <div class="pointer-events-none absolute top-3 sm:top-5 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
+        <div class="cartoon-pill px-4 py-1.5 rounded-full flex items-center space-x-2 bg-white/95">
+            <span class="text-xs sm:text-sm font-extrabold text-slate-700 uppercase tracking-wider">Targets:</span>
+            <div id="targets-dots" class="flex items-center space-x-1.5"></div>
+        </div>
+        <p id="scene-subtitle" class="mt-1 text-xs sm:text-sm font-bold stroke-text tracking-wide text-center">
+            Burger & Fries Frenzy
+        </p>
+    </div>
+
+    <!-- Bottom Helper Bar -->
+    <div class="pointer-events-none absolute inset-x-0 bottom-4 flex flex-col items-center justify-center z-20 px-4">
+        <div id="tap-hint" class="float-badge cartoon-pill px-5 py-2 rounded-full bg-white/95 text-slate-900 font-bold text-xs sm:text-sm flex items-center space-x-2 shadow-lg">
+            <span class="inline-block w-3 h-3 rounded-full bg-purple-600 animate-ping"></span>
+            <span>TAP SCREEN / CLICK MOUSE or SPACE to Flip Gun & Shoot Targets!</span>
+        </div>
+    </div>
+
+    <!-- Floating Hit Notifications Container -->
+    <div id="floating-popups" class="pointer-events-none absolute inset-0 overflow-hidden z-30"></div>
+
+    <!-- Level Complete Victory Overlay -->
+    <div id="victory-modal" class="hidden fixed inset-0 bg-black/45 backdrop-blur-[2px] z-40 flex items-center justify-center p-4">
+        <div class="cartoon-box bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full text-center animate-pop relative">
+            <div class="w-16 h-16 mx-auto -mt-12 mb-3 rounded-2xl bg-amber-400 border-4 border-slate-900 flex items-center justify-center shadow-md">
+                <svg class="w-10 h-10 text-slate-900" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                </svg>
+            </div>
+            <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-1">LEVEL CLEared!</h2>
+            <p id="victory-summary" class="text-slate-600 font-bold text-sm sm:text-base mb-5">
+                All targets eliminated with physics precision!
+            </p>
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-amber-50 border-2 border-slate-900 rounded-2xl p-3">
+                    <div class="text-xs font-bold text-slate-500 uppercase">Shots Fired</div>
+                    <div id="stat-shots" class="text-2xl font-extrabold text-slate-900">4</div>
+                </div>
+                <div class="bg-emerald-50 border-2 border-slate-900 rounded-2xl p-3">
+                    <div class="text-xs font-bold text-slate-500 uppercase">Coins Earned</div>
+                    <div id="stat-coins" class="text-2xl font-extrabold text-emerald-600">+50</div>
+                </div>
+            </div>
+            <button id="btn-next-level" class="w-full py-3.5 px-6 rounded-2xl cartoon-box bg-emerald-400 hover:bg-emerald-300 text-slate-900 font-extrabold text-xl tracking-wide flex items-center justify-center space-x-2">
+                <span>NEXT LEVEL</span>
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Level / Scene Picker Modal -->
+    <div id="level-picker-modal" class="hidden fixed inset-0 bg-black/45 backdrop-blur-[2px] z-40 flex items-center justify-center p-4">
+        <div class="cartoon-box bg-white rounded-3xl p-5 sm:p-6 max-w-lg w-full animate-pop">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900">Select Level Scene</h3>
+                <button id="btn-close-picker" class="w-9 h-9 rounded-full cartoon-box flex items-center justify-center font-bold text-lg">✕</button>
+            </div>
+            <div id="level-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[60vh] overflow-y-auto p-1"></div>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================================================
+         * 1. REALISTIC SYNTHESIZED SOUND ENGINE (Web Audio API - No External Assets)
+         * ============================================================================ */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.gunshotBuffer = null;
+                this.bulletHitBuffer = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) {
+                        this.ctx = new AudioCtx();
+                        this.buildSampleBuffers();
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // Pre-builds high-definition PCM audio buffers matching the two provided audio samples:
+            // 1) Realistic Gunshot Blast (~1.05s with supersonic crack, muzzle punch & acoustic room tail)
+            // 2) Bullet Impact Hit (~0.28s sharp slap transient + heavy body/asset thud)
+            buildSampleBuffers() {
+                if (!this.ctx) return;
+                const sr = this.ctx.sampleRate;
+
+                // --- SOUND 1: GUN BULLET FIRING SOUND (1.05s) ---
+                const gunDur = 1.05;
+                const gunLen = Math.floor(sr * gunDur);
+                this.gunshotBuffer = this.ctx.createBuffer(2, gunLen, sr);
+
+                for (let ch = 0; ch < 2; ch++) {
+                    const data = this.gunshotBuffer.getChannelData(ch);
+                    let lp1 = 0, lp2 = 0, bp = 0;
+                    let phase = 0;
+
+                    for (let i = 0; i < gunLen; i++) {
+                        const t = i / sr;
+                        const white = Math.random() * 2 - 1;
+
+                        // 1. Initial mechanical pin & supersonic crack (0 - 14ms)
+                        const crackEnv = t < 0.014 ? Math.exp(-t / 0.0032) : 0;
+                        const crack = (white * 0.7 + Math.sin(2 * Math.PI * 2600 * t) * 0.5) * crackEnv;
+
+                        // 2. High-pressure gunpowder muzzle blast (0 - 180ms)
+                        const blastFreq = 45 + 195 * Math.exp(-t / 0.028);
+                        phase += (2 * Math.PI * blastFreq) / sr;
+                        const punchEnv = Math.exp(-t / 0.042);
+                        const lowPunch = Math.sin(phase) * punchEnv * 1.15;
+
+                        // Filtered broadband explosion noise + acoustic echo tail
+                        const cutoff = t < 0.12 ? 0.48 : Math.max(0.06, 0.32 * Math.exp(-(t - 0.12) / 0.35));
+                        lp1 += cutoff * (white - lp1);
+                        lp2 += cutoff * (lp1 - lp2);
+                        bp = lp1 - lp2;
+
+                        // Multi-stage acoustic decay matching recorded gunshot tail
+                        const burstEnv = Math.exp(-t / 0.055) * 1.25;
+                        const earlyRefl = (t > 0.028 ? Math.exp(-(t - 0.028) / 0.095) * 0.55 : 0) +
+                                          (t > 0.065 ? Math.exp(-(t - 0.065) / 0.17) * 0.32 : 0);
+                        const reverbTail = Math.exp(-t / 0.24) * 0.18;
+
+                        const rawSample = crack * 1.1 + lowPunch + (lp2 * 0.75 + bp * 0.65) * (burstEnv + earlyRefl + reverbTail);
+                        // Soft tape/waveshaper saturation for realistic punch
+                        data[i] = Math.tanh(rawSample * 1.65) * 0.92;
+                    }
+                }
+
+                // --- SOUND 2: BULLET HIT ON MAN BODY OR ASSET SOUND (0.28s) ---
+                const hitDur = 0.28;
+                const hitLen = Math.floor(sr * hitDur);
+                this.bulletHitBuffer = this.ctx.createBuffer(2, hitLen, sr);
+
+                for (let ch = 0; ch < 2; ch++) {
+                    const data = this.bulletHitBuffer.getChannelData(ch);
+                    let filtA = 0, filtB = 0;
+                    let thudPhase = 0;
+                    let slapPhase = 0;
+
+                    for (let i = 0; i < hitLen; i++) {
+                        const t = i / sr;
+                        const white = Math.random() * 2 - 1;
+
+                        // 1. Sharp bullet impact slap/crack transient (0 - 25ms)
+                        const slapFreq = 320 + 1650 * Math.exp(-t / 0.0065);
+                        slapPhase += (2 * Math.PI * slapFreq) / sr;
+                        const slapEnv = Math.exp(-t / 0.0085);
+                        const slapWave = (Math.sin(slapPhase) * 0.65 + white * 0.85) * slapEnv;
+
+                        // 2. Heavy meaty/solid sub-bass & mid-bass impact thud (0 - 150ms)
+                        const thudFreq = 38 + 160 * Math.exp(-t / 0.024);
+                        thudPhase += (2 * Math.PI * thudFreq) / sr;
+                        const thudEnv = Math.exp(-t / 0.046);
+                        const thudWave = Math.sin(thudPhase) * thudEnv * 1.35;
+
+                        // 3. Damped surface/body impact texture (0 - 220ms)
+                        filtA += 0.22 * (white - filtA);
+                        filtB += 0.12 * (filtA - filtB);
+                        const bodyNoise = (filtA - filtB) * Math.exp(-t / 0.038) * 1.4;
+
+                        const combined = slapWave * 1.15 + thudWave + bodyNoise;
+                        data[i] = Math.tanh(combined * 2.1) * 0.95;
+                    }
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            // Plays the realistic gun bullet firing sound
+            playGunshot() {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                if (!this.gunshotBuffer) this.buildSampleBuffers();
+
+                const now = this.ctx.currentTime;
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.gunshotBuffer;
+                // Slight natural pitch variation per shot
+                src.playbackRate.setValueAtTime(0.97 + Math.random() * 0.06, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.95, now);
+
+                src.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(now);
+            }
+
+            // Plays the bullet hit impact sound when a bullet strikes a man's body or a level asset
+            playBulletHit(surfaceType = 'body') {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                if (!this.bulletHitBuffer) this.buildSampleBuffers();
+
+                const now = this.ctx.currentTime;
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.bulletHitBuffer;
+                // Slightly deeper thud on body hit, slightly crisper snap on solid prop/asset hit
+                const rate = surfaceType === 'body'
+                    ? 0.96 + Math.random() * 0.06
+                    : 1.06 + Math.random() * 0.08;
+                src.playbackRate.setValueAtTime(rate, now);
+
+                const hitGain = this.ctx.createGain();
+                hitGain.gain.setValueAtTime(1.0, now);
+
+                src.connect(hitGain);
+                hitGain.connect(this.ctx.destination);
+                src.start(now);
+            }
+
+            // Alias kept for compatibility with enemy knockdown calls
+            playEnemyHit() {
+                this.playBulletHit('body');
+            }
+
+            // Prop or floor bounce sound
+            playPropBounce(intensity = 0.5) {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+
+                const now = this.ctx.currentTime;
+                const vol = Math.min(0.4, Math.max(0.05, intensity * 0.3));
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(110 + Math.random() * 60, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.07);
+                gain.gain.setValueAtTime(vol, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.085);
+            }
+
+            // Level complete chime
+            playVictory() {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const now = this.ctx.currentTime + idx * 0.09;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.28, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.36);
+                });
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        /* ============================================================================
+         * 2. GUN SKINS & LEVEL CONFIGURATIONS
+         * ============================================================================ */
+        const GUN_SKINS = [
+            { name: 'Purple Fade', body: 0x8b68f6, grip: 0xf99b6b, barrel: 0x6b4ce6, accent: 0xffffff },
+            { name: 'Golden Deagle', body: 0xfbbf24, grip: 0x27272a, barrel: 0xd97706, accent: 0xfef08a },
+            { name: 'Cyber Mint', body: 0x10b981, grip: 0xec4899, barrel: 0x047857, accent: 0xa7f3d0 },
+            { name: 'Crimson Viper', body: 0xef4444, grip: 0x1e293b, barrel: 0xb91c1c, accent: 0xfca5a5 },
+            { name: 'Cobalt Blaster', body: 0x3b82f6, grip: 0xf59e0b, barrel: 0x1d4ed8, accent: 0x93c5fd }
+        ];
+
+        const LEVEL_PRESETS = [
+            {
+                id: 1,
+                displayNum: 51, // Starts with the exact iconic "Level 51" scene from the screenshot!
+                title: "Burger & Fries Frenzy",
+                wallLeft: 0xc9bede,
+                wallRight: 0xb0a4c7,
+                floor: 0xedd5e3,
+                themeType: 'fastfood'
+            },
+            {
+                id: 2,
+                displayNum: 52,
+                title: "Gym Weightlifting Chaos",
+                wallLeft: 0xbae6fd,
+                wallRight: 0x93c5fd,
+                floor: 0xfde68a,
+                themeType: 'gym'
+            },
+            {
+                id: 3,
+                displayNum: 53,
+                title: "Construction Tower Mayhem",
+                wallLeft: 0xfed7aa,
+                wallRight: 0xfdba74,
+                floor: 0xe2e8f0,
+                themeType: 'construction'
+            },
+            {
+                id: 4,
+                displayNum: 54,
+                title: "Giant Bakery & Cake Party",
+                wallLeft: 0xfbcfe8,
+                wallRight: 0xf9a8d4,
+                floor: 0xd9f99d,
+                themeType: 'bakery'
+            },
+            {
+                id: 5,
+                displayNum: 55,
+                title: "Circus Acrobat Showdown",
+                wallLeft: 0xddd6fe,
+                wallRight: 0xc4b5fd,
+                floor: 0xfecaca,
+                themeType: 'circus'
+            },
+            {
+                id: 6,
+                displayNum: 56,
+                title: "Tropical Beach & Surf Party",
+                wallLeft: 0x99f6e4,
+                wallRight: 0x5eead4,
+                floor: 0xfef08a,
+                themeType: 'beach'
+            }
+        ];
+
+        /* ============================================================================
+         * 3. THREE.JS SCENE, CAMERA & ROOM ENVIRONMENT
+         * ============================================================================ */
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xc9bede);
+
+        const camera = new THREE.PerspectiveCamera(36, window.innerWidth / window.innerHeight, 0.1, 200);
+        // Position camera to match the exact diagonal room corner perspective from the screenshot
+        const defaultCamPos = new THREE.Vector3(-1.5, 4.6, 21.5);
+        const defaultLookAt = new THREE.Vector3(0.5, 2.3, 0);
+        camera.position.copy(defaultCamPos);
+        camera.lookAt(defaultLookAt);
+
+        // Soft studio & cartoon lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.78);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.55);
+        dirLight.position.set(-8, 18, 14);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 1;
+        dirLight.shadow.camera.far = 50;
+        const d = 16;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        scene.add(dirLight);
+
+        // Room Corner Geometry (Floor, Back-Left Wall, Back-Right Wall meeting at a vertical corner seam)
+        const roomGroup = new THREE.Group();
+        scene.add(roomGroup);
+
+        const floorMat = new THREE.MeshLambertMaterial({ color: 0xedd5e3 });
+        const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), floorMat);
+        floorMesh.rotation.x = -Math.PI / 2;
+        floorMesh.position.y = 0;
+        floorMesh.receiveShadow = true;
+        roomGroup.add(floorMesh);
+
+        // Corner seam located at X = 3.5, Z = -6.5 just like the screenshot
+        const leftWallMat = new THREE.MeshBasicMaterial({ color: 0xc9bede });
+        const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(70, 45), leftWallMat);
+        leftWall.position.set(-28, 20, -6.5);
+        leftWall.rotation.y = 0.12;
+        roomGroup.add(leftWall);
+
+        const rightWallMat = new THREE.MeshBasicMaterial({ color: 0xb0a4c7 });
+        const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(70, 45), rightWallMat);
+        rightWall.position.set(34, 20, 4.5);
+        rightWall.rotation.y = -0.52;
+        roomGroup.add(rightWall);
+
+        /* ============================================================================
+         * 4. PHYSICS-DRIVEN 3D PISTOL WITH RECOIL, SPIN & BARREL VECTOR
+         * ============================================================================ */
+        class PhysicsGun {
+            constructor() {
+                this.group = new THREE.Group();
+                this.skinIndex = 0;
+                this.buildMesh();
+                scene.add(this.group);
+
+                // Physics state
+                this.pos = new THREE.Vector3(-2.1, 2.5, 0);
+                this.vel = new THREE.Vector3(0, 0, 0);
+                // Match screenshot initial pose: barrel pointing straight up (PI/2)
+                this.angle = Math.PI / 2;
+                this.angVel = 0;
+                this.onGround = false;
+                this.recoilScale = 1;
+            }
+
+            buildMesh() {
+                while (this.group.children.length > 0) {
+                    this.group.remove(this.group.children[0]);
+                }
+
+                const skin = GUN_SKINS[this.skinIndex];
+                const outlineMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide });
+
+                // Gun container oriented so angle = 0 points barrel to +X (Right)
+                const model = new THREE.Group();
+
+                // 1. Barrel / Slide (Top horizontal part along X axis)
+                const slideGeo = new THREE.BoxGeometry(1.15, 0.34, 0.26);
+                const slideMat = new THREE.MeshToonMaterial({ color: skin.body });
+                const slide = new THREE.Mesh(slideGeo, slideMat);
+                slide.position.set(0.18, 0.18, 0);
+                slide.castShadow = true;
+                model.add(slide);
+
+                // Cartoon outline on slide
+                const slideOutline = new THREE.Mesh(slideGeo.clone().scale(1.08, 1.12, 1.12), outlineMat);
+                slideOutline.position.copy(slide.position);
+                model.add(slideOutline);
+
+                // Muzzle tip
+                const muzzleGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.18, 12);
+                muzzleGeo.rotateZ(Math.PI / 2);
+                const muzzle = new THREE.Mesh(muzzleGeo, new THREE.MeshToonMaterial({ color: 0x1e293b }));
+                muzzle.position.set(0.8, 0.2, 0);
+                model.add(muzzle);
+
+                // 2. Grip / Handle (Angled downward)
+                const gripGeo = new THREE.BoxGeometry(0.34, 0.72, 0.24);
+                const gripMat = new THREE.MeshToonMaterial({ color: skin.grip });
+                const grip = new THREE.Mesh(gripGeo, gripMat);
+                grip.position.set(-0.22, -0.22, 0);
+                grip.rotation.z = 0.22;
+                grip.castShadow = true;
+                model.add(grip);
+
+                const gripOutline = new THREE.Mesh(gripGeo.clone().scale(1.1, 1.08, 1.12), outlineMat);
+                gripOutline.position.copy(grip.position);
+                gripOutline.rotation.copy(grip.rotation);
+                model.add(gripOutline);
+
+                // White highlight stripe on slide (matching screenshot detail)
+                const stripeGeo = new THREE.BoxGeometry(0.45, 0.08, 0.28);
+                const stripe = new THREE.Mesh(stripeGeo, new THREE.MeshBasicMaterial({ color: skin.accent }));
+                stripe.position.set(0.22, 0.22, 0);
+                model.add(stripe);
+
+                // Trigger guard
+                const guardGeo = new THREE.TorusGeometry(0.14, 0.035, 8, 16);
+                const guard = new THREE.Mesh(guardGeo, new THREE.MeshBasicMaterial({ color: 0x1a1a1a }));
+                guard.position.set(0.02, -0.08, 0);
+                model.add(guard);
+
+                // Subtle Laser Sight Line so player can time shots cleanly while flipping
+                const laserGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0.88, 0.2, 0),
+                    new THREE.Vector3(14.5, 0.2, 0)
+                ]);
+                const laserMat = new THREE.LineDashedMaterial({
+                    color: 0xff2a6d,
+                    dashSize: 0.35,
+                    gapSize: 0.25,
+                    transparent: true,
+                    opacity: 0.65
+                });
+                const laserLine = new THREE.Line(laserGeo, laserMat);
+                laserLine.computeLineDistances();
+                model.add(laserLine);
+
+                this.model = model;
+                this.group.add(model);
+            }
+
+            cycleSkin() {
+                this.skinIndex = (this.skinIndex + 1) % GUN_SKINS.length;
+                this.buildMesh();
+                return GUN_SKINS[this.skinIndex].name;
+            }
+
+            reset(x = -2.1, y = 1.05) {
+                this.pos.set(x, y, 0);
+                this.vel.set(0, 0, 0);
+                // Upright barrel pointing up just like the screenshot
+                this.angle = Math.PI / 2;
+                this.angVel = 0;
+                this.onGround = true;
+                this.updateTransform();
+            }
+
+            getMuzzleWorldData() {
+                // Local muzzle offset is (0.85, 0.2, 0)
+                const dir = new THREE.Vector3(Math.cos(this.angle), Math.sin(this.angle), 0).normalize();
+                const upOffset = new THREE.Vector3(-Math.sin(this.angle), Math.cos(this.angle), 0).multiplyScalar(0.2);
+                const muzzlePos = this.pos.clone().add(dir.clone().multiplyScalar(0.85)).add(upOffset);
+                return { muzzlePos, dir };
+            }
+
+            shoot() {
+                const { muzzlePos, dir } = this.getMuzzleWorldData();
+
+                // Apply realistic opposite recoil + upward lift so the gun never gets stuck off-screen
+                const recoilStrength = 7.8;
+                this.vel.x = -dir.x * recoilStrength;
+                this.vel.y = Math.max(5.8, -dir.y * recoilStrength + 6.8);
+
+                // Keep the gun within the playable arena bounds horizontally
+                if (this.pos.x < -8.5 && this.vel.x < 0) this.vel.x = 5.5;
+                if (this.pos.x > 6.5 && this.vel.x > 0) this.vel.x = -6.0;
+
+                // Spin torque when firing
+                this.angVel = -10.2 - Math.random() * 2.5;
+                this.onGround = false;
+                this.recoilScale = 1.28;
+
+                return { muzzlePos, dir };
+            }
+
+            update(dt) {
+                // Gravity
+                const gravity = -18.5;
+                if (!this.onGround) {
+                    this.vel.y += gravity * dt;
+                }
+
+                // Integrate position and rotation
+                this.pos.x += this.vel.x * dt;
+                this.pos.y += this.vel.y * dt;
+                this.angle += this.angVel * dt;
+
+                // Horizontal arena soft boundaries (invisible elastic walls so gun stays on screen)
+                if (this.pos.x < -9.5) {
+                    this.pos.x = -9.5;
+                    this.vel.x = Math.abs(this.vel.x) * 0.65;
+                    this.angVel *= -0.8;
+                } else if (this.pos.x > 8.5) {
+                    this.pos.x = 8.5;
+                    this.vel.x = -Math.abs(this.vel.x) * 0.65;
+                    this.angVel *= -0.8;
+                }
+
+                // Ceiling cap
+                if (this.pos.y > 10.5) {
+                    this.pos.y = 10.5;
+                    this.vel.y = -Math.abs(this.vel.y) * 0.4;
+                }
+
+                // Floor collision & realistic bounce
+                const floorY = 0.58;
+                if (this.pos.y <= floorY) {
+                    this.pos.y = floorY;
+                    if (Math.abs(this.vel.y) > 2.2) {
+                        sound.playPropBounce(Math.abs(this.vel.y) / 12);
+                        this.vel.y = -this.vel.y * 0.42;
+                        this.vel.x *= 0.78;
+                        this.angVel *= 0.72;
+                    } else {
+                        this.vel.y = 0;
+                        this.vel.x *= 0.86;
+                        this.angVel *= 0.82;
+                        if (Math.abs(this.angVel) < 0.4 && Math.abs(this.vel.x) < 0.2) {
+                            this.onGround = true;
+                        }
+                    }
+                }
+
+                // Recover recoil scale
+                this.recoilScale += (1 - this.recoilScale) * 14 * dt;
+                this.updateTransform();
+            }
+
+            updateTransform() {
+                this.group.position.copy(this.pos);
+                this.group.rotation.z = this.angle;
+                this.group.scale.setScalar(this.recoilScale);
+            }
+        }
+
+        /* ============================================================================
+         * 5. ANIMATED 3D STICKMAN CHARACTER WITH RAGDOLL KNOCKDOWN PHYSICS
+         * ============================================================================ */
+        class TargetMan {
+            constructor(config) {
+                this.color = config.color || 0xff1e1e;
+                this.task = config.task || 'wave'; // 'lift_bun', 'fries_wave', 'squat', 'dance', 'juggle', 'hammer', 'balance'
+                this.basePos = config.position.clone();
+                this.pos = config.position.clone();
+                this.scale = config.scale || 1.0;
+                this.hit = false;
+
+                // Physics velocity & angular velocity when hit by bullet
+                this.vel = new THREE.Vector3(0, 0, 0);
+                this.rotVel = new THREE.Vector3(0, 0, 0);
+                this.limbFlailSpeed = 0;
+                this.animTime = Math.random() * 10;
+                this.linkedProp = config.linkedProp || null;
+
+                // Realistic fearful eye-tracking & facial expression state
+                this.fearLevel = 0.25;
+                this.curPupilX = -0.025;
+                this.curPupilY = -0.01;
+                this.curHeadYaw = 0;
+                this.curHeadPitch = 0;
+                this.saccadeTimer = Math.random() * 0.4;
+                this.saccadeX = 0;
+                this.saccadeY = 0;
+                this.blinkTimer = 1.2 + Math.random() * 2.5;
+                this.blinkProgress = 0;
+                this._tempHeadWorld = new THREE.Vector3();
+
+                this.group = new THREE.Group();
+                this.group.position.copy(this.pos);
+                this.group.scale.setScalar(this.scale);
+
+                this.buildCharacter();
+                scene.add(this.group);
+            }
+
+            buildCharacter() {
+                const skinMat = new THREE.MeshToonMaterial({ color: this.color });
+                const outlineMat = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide });
+
+                const addOutlinedPart = (geo, mat, parent, pos) => {
+                    const holder = new THREE.Group();
+                    if (pos) holder.position.copy(pos);
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.castShadow = true;
+                    const out = new THREE.Mesh(geo.clone().scale(1.12, 1.08, 1.12), outlineMat);
+                    holder.add(mesh);
+                    holder.add(out);
+                    parent.add(holder);
+                    return holder;
+                };
+
+                this.root = new THREE.Group();
+                this.group.add(this.root);
+
+                // Torso (hips at y = 1.05)
+                const torsoGeo = new THREE.CylinderGeometry(0.24, 0.20, 0.85, 12);
+                this.torso = addOutlinedPart(torsoGeo, skinMat, this.root, new THREE.Vector3(0, 1.35, 0));
+
+                // Chest detail (like the white top detail on the red character in screenshot if lift_bun)
+                if (this.task === 'lift_bun') {
+                    const chestGeo = new THREE.SphereGeometry(0.12, 10, 10);
+                    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                    const cL = new THREE.Mesh(chestGeo, whiteMat);
+                    cL.position.set(-0.1, 0.12, 0.2);
+                    const cR = new THREE.Mesh(chestGeo, whiteMat);
+                    cR.position.set(0.1, 0.12, 0.2);
+                    this.torso.add(cL, cR);
+                }
+
+                // Head
+                const headGeo = new THREE.SphereGeometry(0.27, 18, 18);
+                headGeo.scale(0.94, 1.1, 0.94);
+                this.head = addOutlinedPart(headGeo, skinMat, this.torso, new THREE.Vector3(0, 0.68, 0));
+
+                // ========================================================================
+                // REALISTIC EXPRESSIVE FEARFUL EYES (White Sclera + Solid Black Moving Eyeball)
+                // ========================================================================
+                const scleraGeo = new THREE.SphereGeometry(0.092, 16, 16);
+                scleraGeo.scale(1.0, 1.1, 0.62);
+                const socketRingGeo = new THREE.SphereGeometry(0.10, 14, 14);
+                socketRingGeo.scale(1.05, 1.14, 0.55);
+
+                const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const socketMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                const blackEyeballMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+                // Upper eyelid cap for blinking & wide-eyed terror
+                const lidGeo = new THREE.SphereGeometry(0.096, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.48);
+                lidGeo.scale(1.02, 1.08, 0.66);
+                const lidMat = new THREE.MeshToonMaterial({ color: this.color });
+
+                const createDetailedEye = (xOffset) => {
+                    const eyeHolder = new THREE.Group();
+                    eyeHolder.position.set(xOffset, 0.065, 0.215);
+
+                    // Dark cartoon socket outline so the eye pops clearly
+                    const socketMesh = new THREE.Mesh(socketRingGeo, socketMat);
+                    socketMesh.position.z = -0.006;
+                    eyeHolder.add(socketMesh);
+
+                    // Eye surface
+                    const scleraMesh = new THREE.Mesh(scleraGeo, eyeWhiteMat);
+                    eyeHolder.add(scleraMesh);
+
+                    // Solid Black 3D Moving Eyeball Unit (tracks the gun across the eye surface)
+                    const pupilUnit = new THREE.Group();
+                    pupilUnit.position.set(0, 0, 0.052);
+
+                    const irisGeo = new THREE.SphereGeometry(0.048, 14, 14);
+                    irisGeo.scale(1.0, 1.05, 0.45);
+                    const irisMesh = new THREE.Mesh(irisGeo, blackEyeballMat);
+
+                    const pupilGeo = new THREE.SphereGeometry(0.042, 14, 14);
+                    pupilGeo.scale(1.0, 1.05, 0.5);
+                    const pupilMesh = new THREE.Mesh(pupilGeo, blackEyeballMat);
+                    pupilMesh.position.z = 0.003;
+
+                    // Subtle tiny specular reflection dot on the black eyeball
+                    const glintMesh = new THREE.Mesh(new THREE.CircleGeometry(0.009, 10), eyeWhiteMat);
+                    glintMesh.position.set(0.014, 0.015, 0.022);
+
+                    pupilUnit.add(irisMesh, pupilMesh, glintMesh);
+                    eyeHolder.add(pupilUnit);
+
+                    // Upper Eyelid
+                    const eyelid = new THREE.Mesh(lidGeo, lidMat);
+                    eyelid.rotation.x = -0.55; // Retracted by default
+                    eyeHolder.add(eyelid);
+
+                    this.head.add(eyeHolder);
+                    return { eyeHolder, pupilUnit, pupilMesh, irisMesh, glintMesh, eyelid };
+                };
+
+                this.leftEyeObj = createDetailedEye(-0.102);
+                this.rightEyeObj = createDetailedEye(0.102);
+                this.leftEye = this.leftEyeObj.eyeHolder;
+                this.rightEye = this.rightEyeObj.eyeHolder;
+
+                // Expressive 3D Eyebrows that tilt into a terrified/pleading arch
+                const browGeo = new THREE.BoxGeometry(0.11, 0.026, 0.03);
+                const browMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+                this.leftBrow = new THREE.Mesh(browGeo, browMat);
+                this.leftBrow.position.set(-0.105, 0.185, 0.235);
+                this.rightBrow = new THREE.Mesh(browGeo, browMat);
+                this.rightBrow.position.set(0.105, 0.185, 0.235);
+                this.head.add(this.leftBrow, this.rightBrow);
+
+                // Expressive 3D Mouth (quivers and opens into a scared "O" when aimed at)
+                const mouthGeo = new THREE.CircleGeometry(0.055, 16);
+                const mouthMat = new THREE.MeshBasicMaterial({ color: 0x1a0505 });
+                this.mouth = new THREE.Mesh(mouthGeo, mouthMat);
+                this.mouth.position.set(0, -0.095, 0.242);
+                this.mouth.scale.set(0.9, 0.35, 1);
+                this.head.add(this.mouth);
+
+                // Animated Nervous Sweat Drop on temple when terrified
+                const sweatGeo = new THREE.SphereGeometry(0.032, 10, 10);
+                sweatGeo.scale(0.75, 1.35, 0.75);
+                const sweatMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+                this.sweatDrop = new THREE.Mesh(sweatGeo, sweatMat);
+                this.sweatDrop.position.set(-0.23, 0.16, 0.12);
+                this.sweatDrop.visible = false;
+                this.head.add(this.sweatDrop);
+
+                // Arms (Left & Right Pivots at Shoulders)
+                this.leftArmPivot = new THREE.Group();
+                this.leftArmPivot.position.set(-0.28, 0.34, 0);
+                this.torso.add(this.leftArmPivot);
+                const armGeo = new THREE.CylinderGeometry(0.075, 0.065, 0.72, 10);
+                armGeo.translate(0, -0.32, 0);
+                addOutlinedPart(armGeo, skinMat, this.leftArmPivot);
+
+                this.rightArmPivot = new THREE.Group();
+                this.rightArmPivot.position.set(0.28, 0.34, 0);
+                this.torso.add(this.rightArmPivot);
+                addOutlinedPart(armGeo, skinMat, this.rightArmPivot);
+
+                // Legs (Left & Right Pivots at Hips)
+                this.leftLegPivot = new THREE.Group();
+                this.leftLegPivot.position.set(-0.15, -0.4, 0);
+                this.torso.add(this.leftLegPivot);
+                const legGeo = new THREE.CylinderGeometry(0.09, 0.07, 0.92, 10);
+                legGeo.translate(0, -0.44, 0);
+                addOutlinedPart(legGeo, skinMat, this.leftLegPivot);
+
+                this.rightLegPivot = new THREE.Group();
+                this.rightLegPivot.position.set(0.15, -0.4, 0);
+                this.torso.add(this.rightLegPivot);
+                addOutlinedPart(legGeo, skinMat, this.rightLegPivot);
+            }
+
+            // Real-time 3D Eye Gaze, Saccades, Pupil Dilation/Pinpoint & Fear Expression Controller
+            updateEyeTracking(dt, gunObj, activeBullets) {
+                if (this.hit || !gunObj) return;
+
+                // 1. Get world position of this character's head
+                this.head.getWorldPosition(this._tempHeadWorld);
+
+                // 2. Determine primary threat to watch: closest flying bullet or the flipping gun
+                let lookTargetPos = gunObj.pos;
+                let bulletPanic = 0;
+
+                if (activeBullets && activeBullets.length > 0) {
+                    let minBulletDist = Infinity;
+                    for (let i = 0; i < activeBullets.length; i++) {
+                        const b = activeBullets[i];
+                        const d = b.pos.distanceTo(this._tempHeadWorld);
+                        if (d < minBulletDist) {
+                            minBulletDist = d;
+                            lookTargetPos = b.pos;
+                        }
+                    }
+                    if (minBulletDist < 12) {
+                        bulletPanic = THREE.MathUtils.clamp(1.2 - minBulletDist / 10, 0.5, 1.0);
+                    }
+                }
+
+                // 3. Compute how closely the gun's barrel / laser is pointing at this man
+                const { muzzlePos, dir } = gunObj.getMuzzleWorldData();
+                const toMan = this._tempHeadWorld.clone().sub(muzzlePos);
+                const distToGun = Math.max(0.001, toMan.length());
+                const dirToMan = toMan.clone().divideScalar(distToGun);
+                const aimAlignment = dir.dot(dirToMan); // 1.0 = laser pointing dead-on at this man
+
+                const aimFear = aimAlignment > 0.65
+                    ? THREE.MathUtils.smoothstep(aimAlignment, 0.65, 0.96)
+                    : 0;
+                const proximityFear = THREE.MathUtils.clamp(1.0 - distToGun / 13.5, 0.2, 0.65);
+                const spinFear = (!gunObj.onGround || Math.abs(gunObj.angVel) > 1.2) ? 0.35 : 0;
+
+                const targetFear = Math.min(1.0, Math.max(proximityFear, aimFear, spinFear, bulletPanic));
+                // Fast spike when scared, gradual recovery
+                const lerpRate = targetFear > this.fearLevel ? 14 : 3.5;
+                this.fearLevel += (targetFear - this.fearLevel) * Math.min(1, lerpRate * dt);
+
+                // 4. Calculate 3D Gaze vector from eyes to the gun/bullet
+                const gazeDelta = lookTargetPos.clone().sub(this._tempHeadWorld);
+                const totalDist = Math.max(0.5, gazeDelta.length());
+
+                // Normalized horizontal (-1 left to +1 right) and vertical (-1 down to +1 up) gaze angles
+                const normX = THREE.MathUtils.clamp(gazeDelta.x / (totalDist * 0.85), -1, 1);
+                const normY = THREE.MathUtils.clamp(gazeDelta.y / (totalDist * 0.85), -1, 1);
+
+                // 5. Biological micro-saccades (rapid subtle eye darting between gun barrel & handle)
+                this.saccadeTimer -= dt;
+                if (this.saccadeTimer <= 0) {
+                    this.saccadeTimer = (0.12 + Math.random() * 0.28) * (1.15 - this.fearLevel * 0.5);
+                    const jitterAmp = 0.0045 + this.fearLevel * 0.004;
+                    this.saccadeX = (Math.random() - 0.5) * 2 * jitterAmp;
+                    this.saccadeY = (Math.random() - 0.5) * 2 * jitterAmp;
+                }
+
+                // High-frequency nervous eye tremor when fear is high
+                const tremorX = Math.sin(this.animTime * 62) * 0.0032 * this.fearLevel;
+                const tremorY = Math.cos(this.animTime * 58) * 0.0032 * this.fearLevel;
+
+                // Target pupil displacement on the sclera hemisphere
+                const maxEyeRadiusX = 0.044;
+                const maxEyeRadiusY = 0.042;
+                const targetPupilX = THREE.MathUtils.clamp(normX * maxEyeRadiusX + this.saccadeX + tremorX, -maxEyeRadiusX, maxEyeRadiusX);
+                const targetPupilY = THREE.MathUtils.clamp(normY * maxEyeRadiusY + this.saccadeY + tremorY, -maxEyeRadiusY, maxEyeRadiusY);
+
+                // Snappy realistic eye saccade interpolation
+                const eyeSnap = Math.min(1, 24 * dt);
+                this.curPupilX += (targetPupilX - this.curPupilX) * eyeSnap;
+                this.curPupilY += (targetPupilY - this.curPupilY) * eyeSnap;
+
+                // Curve Z along the front surface of the sclera so pupils follow the 3D eyeball contour
+                const rSq = Math.min(0.0022, this.curPupilX * this.curPupilX + this.curPupilY * this.curPupilY);
+                const surfaceZ = 0.054 * Math.sqrt(Math.max(0.25, 1 - rSq * 220));
+                const pupilRotY = (this.curPupilX / maxEyeRadiusX) * 0.55;
+                const pupilRotX = -(this.curPupilY / maxEyeRadiusY) * 0.55;
+
+                [this.leftEyeObj, this.rightEyeObj].forEach((eye) => {
+                    eye.pupilUnit.position.set(this.curPupilX, this.curPupilY, surfaceZ);
+                    eye.pupilUnit.rotation.set(pupilRotX, pupilRotY, 0);
+
+                    // Terrified pinpoint pupil shrinkage + wide-eyed sclera bulge
+                    const pupilShrink = 1.0 - this.fearLevel * 0.36 + Math.sin(this.animTime * 45) * 0.04 * this.fearLevel;
+                    eye.pupilMesh.scale.setScalar( THREE.MathUtils.clamp(pupilShrink, 0.55, 1.1) );
+
+                    const eyeBulge = 1.0 + this.fearLevel * 0.24;
+                    eye.eyeHolder.scale.set(eyeBulge, eyeBulge * (1 - this.blinkProgress * 0.92), 1.0 + this.fearLevel * 0.15);
+
+                    // Retract upper eyelids in terror or close during natural blink
+                    eye.eyelid.rotation.x = -0.45 - this.fearLevel * 0.45 + this.blinkProgress * 1.45;
+                });
+
+                // 6. Natural blinking (suppressed when wide-eyed in extreme terror)
+                this.blinkTimer -= dt;
+                if (this.blinkTimer <= 0 && this.fearLevel < 0.72) {
+                    this.blinkProgress = Math.min(1, this.blinkProgress + dt * 18);
+                    if (this.blinkProgress >= 1) {
+                        this.blinkTimer = 1.8 + Math.random() * 2.6;
+                    }
+                } else {
+                    this.blinkProgress = Math.max(0, this.blinkProgress - dt * 16);
+                }
+
+                // 7. Turn Head Partially Toward the Gun + Fearful Head Quiver
+                const targetYaw = normX * 0.42 + Math.sin(this.animTime * 40) * 0.03 * this.fearLevel;
+                const targetPitch = -normY * 0.30;
+                this.curHeadYaw += (targetYaw - this.curHeadYaw) * Math.min(1, 10 * dt);
+                this.curHeadPitch += (targetPitch - this.curHeadPitch) * Math.min(1, 10 * dt);
+
+                this.head.rotation.y = this.curHeadYaw;
+                this.head.rotation.x = this.curHeadPitch;
+
+                // 8. Worried/Terrified Eyebrows & Screaming Mouth
+                const browLift = 0.18 + this.fearLevel * 0.035;
+                const browTilt = 0.22 + this.fearLevel * 0.32;
+                this.leftBrow.position.y = browLift;
+                this.rightBrow.position.y = browLift;
+                this.leftBrow.rotation.z = browTilt;
+                this.rightBrow.rotation.z = -browTilt;
+
+                // Mouth opens into a trembling scared "O" as fear rises
+                const mouthOpenY = 0.32 + this.fearLevel * 0.95 + Math.sin(this.animTime * 38) * 0.12 * this.fearLevel;
+                const mouthOpenX = 0.85 - this.fearLevel * 0.15;
+                this.mouth.scale.set(mouthOpenX, mouthOpenY, 1);
+
+                // 9. Animated sweat drop trickling down temple when scared
+                if (this.fearLevel > 0.48) {
+                    this.sweatDrop.visible = true;
+                    const dropCycle = (this.animTime * 2.2) % 1;
+                    this.sweatDrop.position.y = 0.20 - dropCycle * 0.22;
+                    this.sweatDrop.scale.setScalar(Math.sin(dropCycle * Math.PI) * 1.15);
+                } else {
+                    this.sweatDrop.visible = false;
+                }
+            }
+
+            // Triggered when a bullet or fast-moving prop hits this man
+            triggerHit(impulseDir, speed = 15) {
+                if (this.hit) return;
+                this.hit = true;
+
+                sound.playEnemyHit();
+
+                // Launch ragdoll backward and upward with realistic physics
+                this.vel.set(
+                    impulseDir.x * (speed * 0.48) + (Math.random() - 0.5) * 3,
+                    Math.max(5.5, impulseDir.y * (speed * 0.35) + 6.2),
+                    (Math.random() - 0.5) * 4.5
+                );
+
+                this.rotVel.set(
+                    (Math.random() - 0.5) * 10,
+                    (Math.random() - 0.5) * 8,
+                    -Math.sign(impulseDir.x || 1) * (8 + Math.random() * 6)
+                );
+
+                this.limbFlailSpeed = 18;
+
+                // If this man was holding up a prop (like the top burger bun!), release it to gravity
+                if (this.linkedProp) {
+                    this.linkedProp.dynamic = true;
+                    this.linkedProp.vel.y = 2.0;
+                    this.linkedProp.angVel = (Math.random() - 0.5) * 2.5;
+                }
+
+                // Flatten eyes into knocked-out expression
+                this.leftEye.scale.set(1.3, 0.22, 1);
+                this.rightEye.scale.set(1.3, 0.22, 1);
+                this.sweatDrop.visible = false;
+            }
+
+            update(dt, gunObj, activeBullets) {
+                this.animTime += dt;
+
+                if (!this.hit) {
+                    // Execute unique level task animation!
+                    const t = this.animTime;
+                    switch (this.task) {
+                        case 'lift_bun': {
+                            // Pressing the giant burger top bun up and down!
+                            const press = Math.sin(t * 4.2) * 0.16;
+                            this.torso.position.y = 1.32 + press * 0.5;
+                            this.leftArmPivot.rotation.z = -2.65 - press * 0.6;
+                            this.rightArmPivot.rotation.z = 2.45 + press * 0.6;
+                            this.leftLegPivot.rotation.z = -0.18;
+                            this.rightLegPivot.rotation.z = 0.18;
+                            if (this.linkedProp && !this.linkedProp.dynamic) {
+                                this.linkedProp.mesh.position.y = this.linkedProp.baseY + press;
+                            }
+                            break;
+                        }
+                        case 'fries_wave': {
+                            // Inside the fries box waving both hands overhead excitedly (Matches yellow guy in screenshot!)
+                            const jump = Math.abs(Math.sin(t * 5.5)) * 0.22;
+                            this.torso.position.y = 1.35 + jump;
+                            this.leftArmPivot.rotation.z = -2.85 + Math.sin(t * 9) * 0.28;
+                            this.rightArmPivot.rotation.z = 2.85 + Math.cos(t * 9) * 0.28;
+                            this.head.rotation.z = Math.sin(t * 5.5) * 0.12;
+                            break;
+                        }
+                        case 'squat': {
+                            // Rapid gym squats
+                            const sq = Math.sin(t * 5) * 0.28;
+                            this.torso.position.y = 1.2 + sq;
+                            this.leftLegPivot.rotation.x = sq * 1.2;
+                            this.rightLegPivot.rotation.x = sq * 1.2;
+                            this.leftArmPivot.rotation.x = -1.4 + sq;
+                            this.rightArmPivot.rotation.x = -1.4 + sq;
+                            break;
+                        }
+                        case 'dance': {
+                            // Energetic twist & disco dance
+                            this.torso.rotation.y = Math.sin(t * 6) * 0.35;
+                            this.torso.position.y = 1.35 + Math.abs(Math.cos(t * 6)) * 0.18;
+                            this.leftArmPivot.rotation.z = -2.2 + Math.sin(t * 6) * 0.8;
+                            this.rightArmPivot.rotation.z = 1.2 + Math.cos(t * 6) * 0.8;
+                            this.leftLegPivot.rotation.z = -0.25 + Math.sin(t * 6) * 0.2;
+                            this.rightLegPivot.rotation.z = 0.25 + Math.cos(t * 6) * 0.2;
+                            break;
+                        }
+                        case 'hammer': {
+                            // Construction hammering motion
+                            this.rightArmPivot.rotation.x = -1.6 + Math.sin(t * 10) * 0.95;
+                            this.leftArmPivot.rotation.z = -0.6;
+                            this.torso.rotation.x = Math.sin(t * 10) * 0.12;
+                            break;
+                        }
+                        case 'juggle': {
+                            // Alternating arm circles + hopping
+                            this.leftArmPivot.rotation.x = -1.2 + Math.sin(t * 8) * 0.7;
+                            this.rightArmPivot.rotation.x = -1.2 + Math.cos(t * 8) * 0.7;
+                            this.torso.position.y = 1.35 + Math.abs(Math.sin(t * 4)) * 0.15;
+                            break;
+                        }
+                        default: {
+                            // Jumping jacks
+                            const jj = Math.sin(t * 6);
+                            this.torso.position.y = 1.35 + Math.abs(jj) * 0.2;
+                            this.leftArmPivot.rotation.z = -1.6 - jj * 1.2;
+                            this.rightArmPivot.rotation.z = 1.6 + jj * 1.2;
+                            this.leftLegPivot.rotation.z = -0.25 - Math.max(0, jj) * 0.35;
+                            this.rightLegPivot.rotation.z = 0.25 + Math.max(0, jj) * 0.35;
+                        }
+                    }
+
+                    // Update realistic fearful eye tracking toward the gun & bullets!
+                    this.updateEyeTracking(dt, gunObj, activeBullets);
+                } else {
+                    // Full Ragdoll Physics Simulation after being hit!
+                    this.vel.y -= 19.5 * dt;
+                    this.pos.addScaledVector(this.vel, dt);
+
+                    this.root.rotation.x += this.rotVel.x * dt;
+                    this.root.rotation.y += this.rotVel.y * dt;
+                    this.root.rotation.z += this.rotVel.z * dt;
+
+                    // Flail arms and legs organically
+                    this.limbFlailSpeed *= Math.pow(0.92, dt * 60);
+                    const f = this.animTime * this.limbFlailSpeed;
+                    this.leftArmPivot.rotation.z = -1.5 + Math.sin(f) * 1.1;
+                    this.rightArmPivot.rotation.z = 1.5 + Math.cos(f * 1.1) * 1.1;
+                    this.leftLegPivot.rotation.x = Math.sin(f * 0.9) * 0.8;
+                    this.rightLegPivot.rotation.x = Math.cos(f * 0.9) * 0.8;
+
+                    // Floor collision for ragdoll
+                    const groundY = 0.35;
+                    if (this.pos.y <= groundY) {
+                        this.pos.y = groundY;
+                        if (Math.abs(this.vel.y) > 2.0) {
+                            sound.playPropBounce(0.35);
+                            this.vel.y = -this.vel.y * 0.38;
+                            this.vel.x *= 0.72;
+                            this.vel.z *= 0.72;
+                            this.rotVel.multiplyScalar(0.65);
+                        } else {
+                            this.vel.y = 0;
+                            this.vel.x *= 0.82;
+                            this.vel.z *= 0.82;
+                            this.rotVel.multiplyScalar(0.75);
+                            // Settle flat on the floor
+                            this.root.rotation.x += (Math.PI / 2 - this.root.rotation.x) * 6 * dt;
+                        }
+                    }
+
+                    this.group.position.copy(this.pos);
+                }
+            }
+
+            // World-space bounding center for bullet impact checks
+            getHitCenter() {
+                return new THREE.Vector3(
+                    this.pos.x,
+                    this.pos.y + 1.25 * this.scale,
+                    this.pos.z
+                );
+            }
+
+            destroy() {
+                scene.remove(this.group);
+            }
+        }
+
+        /* ============================================================================
+         * 6. 3D LEVEL PROPS & SCENE ASSET BUILDERS
+         * ============================================================================ */
+        class LevelProp {
+            constructor(mesh, pos, radius, dynamic = false, heightOffset = 0.6) {
+                this.mesh = mesh;
+                this.mesh.position.copy(pos);
+                this.basePos = pos.clone();
+                this.baseY = pos.y;
+                this.radius = radius;
+                this.heightOffset = heightOffset;
+                this.dynamic = dynamic;
+                this.vel = new THREE.Vector3(0, 0, 0);
+                this.angVel = 0;
+                this.shakeTimer = 0;
+                this.shakeDir = new THREE.Vector3();
+                scene.add(this.mesh);
+            }
+
+            // World-space center of the prop for accurate bullet collision
+            getHitCenter() {
+                return new THREE.Vector3(
+                    this.mesh.position.x,
+                    this.mesh.position.y + (this.dynamic ? 0 : this.heightOffset),
+                    this.mesh.position.z
+                );
+            }
+
+            applyImpulse(dir, force = 6) {
+                // Play the bullet hit sound when any asset is struck by a bullet
+                sound.playBulletHit('asset');
+                if (this.dynamic) {
+                    this.vel.x += dir.x * force;
+                    this.vel.y += Math.max(2.5, dir.y * force + 3.0);
+                    this.angVel += (Math.random() - 0.5) * 6;
+                } else {
+                    // Stationary level assets shudder/jolt realistically when hit by a bullet
+                    this.shakeTimer = 0.18;
+                    this.shakeDir.copy(dir);
+                }
+            }
+
+            update(dt) {
+                if (this.shakeTimer > 0 && !this.dynamic) {
+                    this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+                    const jolt = Math.sin(this.shakeTimer * 85) * (this.shakeTimer / 0.18) * 0.14;
+                    this.mesh.position.x = this.basePos.x + this.shakeDir.x * jolt;
+                    this.mesh.rotation.z = -this.shakeDir.x * jolt * 0.45;
+                    if (this.shakeTimer === 0) {
+                        this.mesh.position.x = this.basePos.x;
+                        this.mesh.rotation.z = 0;
+                    }
+                }
+
+                if (!this.dynamic) return;
+                this.vel.y -= 18.0 * dt;
+                this.mesh.position.x += this.vel.x * dt;
+                this.mesh.position.y += this.vel.y * dt;
+                this.mesh.rotation.z += this.angVel * dt;
+
+                const minY = this.radius * 0.45;
+                if (this.mesh.position.y <= minY) {
+                    this.mesh.position.y = minY;
+                    if (Math.abs(this.vel.y) > 1.8) {
+                        this.vel.y = -this.vel.y * 0.35;
+                        this.vel.x *= 0.78;
+                        this.angVel *= 0.7;
+                    } else {
+                        this.vel.y = 0;
+                        this.vel.x *= 0.85;
+                        this.angVel *= 0.8;
+                    }
+                }
+            }
+
+            destroy() {
+                scene.remove(this.mesh);
+            }
+        }
+
+        // Helper to build the exact Roast Chicken prop on the left of the screenshot!
+        function createRoastChickenMesh() {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshToonMaterial({ color: 0xe88d39 });
+            const bodyGeo = new THREE.SphereGeometry(0.46, 16, 14);
+            bodyGeo.scale(1.35, 0.88, 0.95);
+            const body = new THREE.Mesh(bodyGeo, mat);
+            body.castShadow = true;
+            group.add(body);
+
+            // Drumstick legs sticking up slightly on the left
+            const legGeo = new THREE.CylinderGeometry(0.12, 0.06, 0.42, 10);
+            const leg1 = new THREE.Mesh(legGeo, mat);
+            leg1.position.set(-0.32, 0.28, 0.14);
+            leg1.rotation.z = 0.55;
+            const leg2 = leg1.clone();
+            leg2.position.z = -0.14;
+            group.add(leg1, leg2);
+
+            // White bone tips
+            const boneMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb });
+            const boneGeo = new THREE.SphereGeometry(0.065, 8, 8);
+            const b1 = new THREE.Mesh(boneGeo, boneMat);
+            b1.position.set(-0.45, 0.45, 0.14);
+            const b2 = b1.clone();
+            b2.position.z = -0.14;
+            group.add(b1, b2);
+
+            return group;
+        }
+
+        // Helper to build the Giant Burger Base (Bottom Bun + Patty + Melted Cheese Slice)
+        function createBurgerBaseMesh() {
+            const group = new THREE.Group();
+
+            // Golden bottom bun
+            const bunGeo = new THREE.CylinderGeometry(1.38, 1.22, 0.56, 28);
+            const bunMat = new THREE.MeshToonMaterial({ color: 0xf7b519 });
+            const bottomBun = new THREE.Mesh(bunGeo, bunMat);
+            bottomBun.position.y = 0.28;
+            bottomBun.castShadow = true;
+            bottomBun.receiveShadow = true;
+            group.add(bottomBun);
+
+            // Brown meat patty
+            const pattyGeo = new THREE.CylinderGeometry(1.26, 1.26, 0.36, 26);
+            const pattyMat = new THREE.MeshToonMaterial({ color: 0x9c4a08 });
+            const patty = new THREE.Mesh(pattyGeo, pattyMat);
+            patty.position.y = 0.68;
+            patty.castShadow = true;
+            group.add(patty);
+
+            // Yellow square melted cheese slice on top
+            const cheeseGeo = new THREE.BoxGeometry(2.15, 0.12, 2.15);
+            const cheeseMat = new THREE.MeshToonMaterial({ color: 0xffdf00 });
+            const cheese = new THREE.Mesh(cheeseGeo, cheeseMat);
+            cheese.position.y = 0.9;
+            cheese.rotation.y = Math.PI / 5;
+            group.add(cheese);
+
+            return group;
+        }
+
+        // Helper to build the Giant Sesame Top Bun (Held overhead by the Red Stickman!)
+        function createBurgerTopBunMesh() {
+            const group = new THREE.Group();
+            const topGeo = new THREE.SphereGeometry(1.45, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.55);
+            topGeo.scale(1, 0.72, 1);
+            const bunMat = new THREE.MeshToonMaterial({ color: 0xf5ab18 });
+            const topBun = new THREE.Mesh(topGeo, bunMat);
+            topBun.castShadow = true;
+            group.add(topBun);
+
+            // Flat underside of bun
+            const bottomCap = new THREE.Mesh(
+                new THREE.CircleGeometry(1.42, 28),
+                new THREE.MeshToonMaterial({ color: 0xfde68a })
+            );
+            bottomCap.rotation.x = Math.PI / 2;
+            group.add(bottomCap);
+
+            // Brown sesame seeds scattered on top
+            const seedMat = new THREE.MeshBasicMaterial({ color: 0x854d0e });
+            const seedGeo = new THREE.SphereGeometry(0.065, 8, 8);
+            seedGeo.scale(1.4, 0.6, 0.9);
+            for (let i = 0; i < 16; i++) {
+                const angle = (i / 16) * Math.PI * 2 + (i % 2) * 0.3;
+                const r = 0.45 + (i % 3) * 0.34;
+                const seed = new THREE.Mesh(seedGeo, seedMat);
+                seed.position.set(
+                    Math.cos(angle) * r,
+                    0.88 - r * 0.32,
+                    Math.sin(angle) * r
+                );
+                seed.rotation.y = angle;
+                group.add(seed);
+            }
+            return group;
+        }
+
+        // Helper to build the Red & Yellow Striped French Fries Box from the screenshot
+        function createFriesCartonMesh() {
+            const group = new THREE.Group();
+            const segments = 20;
+            const radiusTop = 1.55;
+            const radiusBottom = 1.25;
+            const height = 2.05;
+
+            for (let i = 0; i < segments; i++) {
+                const thetaStart = (i / segments) * Math.PI * 2;
+                const thetaLength = (1 / segments) * Math.PI * 2 + 0.02;
+                const stripeGeo = new THREE.CylinderGeometry(
+                    radiusTop,
+                    radiusBottom,
+                    height,
+                    4,
+                    1,
+                    false,
+                    thetaStart,
+                    thetaLength
+                );
+                const isRed = i % 2 === 0;
+                const mat = new THREE.MeshToonMaterial({ color: isRed ? 0xe0352b : 0xfacc15 });
+                const slice = new THREE.Mesh(stripeGeo, mat);
+                slice.position.y = height / 2;
+                slice.castShadow = true;
+                slice.receiveShadow = true;
+                group.add(slice);
+            }
+
+            // Tall golden fries arranged around the carton
+            const fryMat = new THREE.MeshToonMaterial({ color: 0xffee00 });
+            for (let i = 0; i < 18; i++) {
+                const angle = (i / 18) * Math.PI * 2;
+                // Leave a small front opening for the yellow man to wave clearly!
+                const r = (i % 2 === 0) ? 1.05 : 0.78;
+                const fryH = 1.7 + (i % 3) * 0.35;
+                const fryGeo = new THREE.BoxGeometry(0.26, fryH, 0.22);
+                const fry = new THREE.Mesh(fryGeo, fryMat);
+                fry.position.set(
+                    Math.cos(angle) * r,
+                    1.85 + (i % 2) * 0.2,
+                    Math.sin(angle) * r - 0.15
+                );
+                fry.rotation.z = (Math.random() - 0.5) * 0.22;
+                fry.rotation.x = (Math.random() - 0.5) * 0.18;
+                fry.castShadow = true;
+                group.add(fry);
+            }
+
+            return group;
+        }
+
+        /* ============================================================================
+         * 7. BULLET PROJECTILES, SHELL CASINGS & HIT PARTICLES
+         * ============================================================================ */
+        const bullets = [];
+        const particles = [];
+
+        function spawnBullet(pos, dir) {
+            const group = new THREE.Group();
+            group.position.copy(pos);
+
+            // Glowing golden bullet head
+            const bulletGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.48, 10);
+            bulletGeo.rotateZ(-Math.PI / 2);
+            const bulletMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+            const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+            group.add(mesh);
+
+            // Bright tracer trail
+            const trailGeo = new THREE.CylinderGeometry(0.02, 0.09, 1.3, 8);
+            trailGeo.rotateZ(-Math.PI / 2);
+            trailGeo.translate(-0.7, 0, 0);
+            const trailMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+            const trail = new THREE.Mesh(trailGeo, trailMat);
+            group.add(trail);
+
+            group.rotation.z = Math.atan2(dir.y, dir.x);
+            scene.add(group);
+
+            bullets.push({
+                mesh: group,
+                pos: pos.clone(),
+                vel: dir.clone().multiplyScalar(32), // Fast, snappy bullet speed
+                life: 2.2
+            });
+
+            // Spawn muzzle flash + brass shell casing
+            spawnParticles(pos, 0xfef08a, 8, 5);
+        }
+
+        function spawnParticles(pos, colorHex, count = 14, speed = 7) {
+            const geo = new THREE.SphereGeometry(0.1, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+            for (let i = 0; i < count; i++) {
+                const p = new THREE.Mesh(geo, mat);
+                p.position.copy(pos);
+                scene.add(p);
+                particles.push({
+                    mesh: p,
+                    vel: new THREE.Vector3(
+                        (Math.random() - 0.5) * speed * 1.6,
+                        Math.random() * speed + 2,
+                        (Math.random() - 0.5) * speed
+                    ),
+                    life: 0.55 + Math.random() * 0.35
+                });
+            }
+        }
+
+        /* ============================================================================
+         * 8. GAME STATE & SCENE GENERATOR (2 TO 5 MEN PER LEVEL)
+         * ============================================================================ */
+        const gun = new PhysicsGun();
+        let activeTargets = [];
+        let activeProps = [];
+        let currentLevelIndex = 0;
+        let currentDisplayLevel = 51; // Starts at Level 51 like the screenshot, increments 52, 53...
+        let totalHits = 93;
+        let totalCoins = 1033;
+        let shotsThisLevel = 0;
+        let levelCleared = false;
+
+        function clearLevelEntities() {
+            activeTargets.forEach(t => t.destroy());
+            activeTargets = [];
+            activeProps.forEach(p => p.destroy());
+            activeProps = [];
+            bullets.forEach(b => scene.remove(b.mesh));
+            bullets.length = 0;
+        }
+
+        function updateHUD() {
+            document.getElementById('level-display').textContent = `Level ${currentDisplayLevel}`;
+            document.getElementById('total-hits-count').textContent = totalHits;
+            document.getElementById('total-coins-count').textContent = totalCoins;
+
+            // Update remaining targets dots
+            const dotsContainer = document.getElementById('targets-dots');
+            dotsContainer.innerHTML = '';
+            activeTargets.forEach(t => {
+                const dot = document.createElement('span');
+                const hex = '#' + t.color.toString(16).padStart(6, '0');
+                dot.className = `w-4 h-4 rounded-full border-2 border-slate-900 transition-transform duration-300 ${t.hit ? 'opacity-25 scale-75 bg-slate-400' : 'scale-100'}`;
+                if (!t.hit) dot.style.backgroundColor = hex;
+                dotsContainer.appendChild(dot);
+            });
+        }
+
+        function spawnFloatingText(worldPos, text, color = '#10b981') {
+            const vector = worldPos.clone().project(camera);
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+
+            const el = document.createElement('div');
+            el.className = 'absolute font-extrabold text-xl sm:text-2xl stroke-text pointer-events-none transition-all duration-700 ease-out';
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.style.color = color;
+            el.textContent = text;
+
+            const container = document.getElementById('floating-popups');
+            container.appendChild(el);
+
+            requestAnimationFrame(() => {
+                el.style.transform = 'translate(-50%, -65px) scale(1.15)';
+                el.style.opacity = '0';
+            });
+            setTimeout(() => el.remove(), 750);
+        }
+
+        function loadLevel(index, customDisplayNum = null) {
+            clearLevelEntities();
+            levelCleared = false;
+            shotsThisLevel = 0;
+            document.getElementById('victory-modal').classList.add('hidden');
+
+            const preset = LEVEL_PRESETS[index % LEVEL_PRESETS.length];
+            currentLevelIndex = index;
+            if (customDisplayNum !== null) {
+                currentDisplayLevel = customDisplayNum;
+            }
+
+            // Apply room color palette
+            scene.background.setHex(preset.wallLeft);
+            leftWallMat.color.setHex(preset.wallLeft);
+            rightWallMat.color.setHex(preset.wallRight);
+            floorMat.color.setHex(preset.floor);
+            document.getElementById('scene-subtitle').textContent = preset.title;
+
+            // Reset Gun on the left side
+            gun.reset(-2.2, 1.05);
+
+            const theme = preset.themeType;
+
+            if (theme === 'fastfood') {
+                // EXACT RECREATION OF SCREENSHOT + DYNAMIC PHYSICS!
+                // 1. Roast Chicken on the left (-4.8, 0.42, 0)
+                const chickenMesh = createRoastChickenMesh();
+                activeProps.push(new LevelProp(chickenMesh, new THREE.Vector3(-4.8, 0.42, 0), 0.7, true));
+
+                // 2. Giant Burger Base at (0.35, 0, 0)
+                const burgerBase = createBurgerBaseMesh();
+                activeProps.push(new LevelProp(burgerBase, new THREE.Vector3(0.35, 0, 0), 1.3, false));
+
+                // 3. Giant Sesame Top Bun above the Red Man
+                const topBunMesh = createBurgerTopBunMesh();
+                const topBunProp = new LevelProp(topBunMesh, new THREE.Vector3(0.35, 2.95, 0), 1.25, false);
+                activeProps.push(topBunProp);
+
+                // 4. Red Man standing on the burger patty lifting the sesame top bun!
+                activeTargets.push(new TargetMan({
+                    color: 0xe61919,
+                    task: 'lift_bun',
+                    position: new THREE.Vector3(0.35, 0.96, 0),
+                    scale: 1.0,
+                    linkedProp: topBunProp
+                }));
+
+                // 5. Giant French Fries Carton on the right (2.95, 0, -0.3)
+                const friesMesh = createFriesCartonMesh();
+                activeProps.push(new LevelProp(friesMesh, new THREE.Vector3(2.95, 0, -0.3), 1.5, false));
+
+                // 6. Yellow Man inside the French Fries waving both hands overhead!
+                activeTargets.push(new TargetMan({
+                    color: 0xffee00,
+                    task: 'fries_wave',
+                    position: new THREE.Vector3(2.65, 1.45, 0),
+                    scale: 0.98
+                }));
+
+            } else if (theme === 'gym') {
+                // 3 MEN DOING DIFFERENT WORKOUTS!
+                // Gym Pedestal 1 (Blue Plate Stack)
+                const matStack = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.2, 1.1, 1.8),
+                    new THREE.MeshToonMaterial({ color: 0x3b82f6 })
+                );
+                matStack.castShadow = true;
+                activeProps.push(new LevelProp(matStack, new THREE.Vector3(0.2, 0.55, 0), 1.1, false));
+
+                // Giant Kettlebell / Medicine Ball
+                const ballMesh = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.95, 22, 22),
+                    new THREE.MeshToonMaterial({ color: 0xec4899 })
+                );
+                ballMesh.castShadow = true;
+                activeProps.push(new LevelProp(ballMesh, new THREE.Vector3(3.1, 0.95, 0), 0.95, true));
+
+                // High Gym Box on Far Right
+                const tallBox = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.1, 1.2, 2.4, 20),
+                    new THREE.MeshToonMaterial({ color: 0x10b981 })
+                );
+                tallBox.castShadow = true;
+                activeProps.push(new LevelProp(tallBox, new THREE.Vector3(5.8, 1.2, 0), 1.2, false));
+
+                // 3 Men doing squats, balance, and jumping jacks
+                activeTargets.push(new TargetMan({
+                    color: 0x2563eb,
+                    task: 'squat',
+                    position: new THREE.Vector3(0.2, 1.1, 0),
+                    scale: 0.98
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0xf97316,
+                    task: 'juggle',
+                    position: new THREE.Vector3(3.1, 1.88, 0),
+                    scale: 0.95
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0x84cc16,
+                    task: 'jumping_jacks',
+                    position: new THREE.Vector3(5.8, 2.4, 0),
+                    scale: 0.98
+                }));
+
+            } else if (theme === 'construction') {
+                // 3 MEN ON SCAFFOLDING & BRICK TOWERS
+                const beam1 = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.1, 1.6, 1.6),
+                    new THREE.MeshToonMaterial({ color: 0xf59e0b })
+                );
+                beam1.castShadow = true;
+                activeProps.push(new LevelProp(beam1, new THREE.Vector3(0.4, 0.8, 0), 1.1, false));
+
+                const steelCrate = new THREE.Mesh(
+                    new THREE.BoxGeometry(1.8, 2.8, 1.8),
+                    new THREE.MeshToonMaterial({ color: 0x64748b })
+                );
+                steelCrate.castShadow = true;
+                activeProps.push(new LevelProp(steelCrate, new THREE.Vector3(3.3, 1.4, 0), 1.4, false));
+
+                const brickPillar = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.0, 1.0, 1.2, 16),
+                    new THREE.MeshToonMaterial({ color: 0xdc2626 })
+                );
+                brickPillar.castShadow = true;
+                activeProps.push(new LevelProp(brickPillar, new THREE.Vector3(6.0, 0.6, 0), 1.0, true));
+
+                activeTargets.push(new TargetMan({
+                    color: 0x06b6d4,
+                    task: 'hammer',
+                    position: new THREE.Vector3(0.4, 1.6, 0)
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0xfacc15,
+                    task: 'fries_wave',
+                    position: new THREE.Vector3(3.3, 2.8, 0)
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0xa855f7,
+                    task: 'dance',
+                    position: new THREE.Vector3(6.0, 1.2, 0)
+                }));
+
+            } else if (theme === 'bakery') {
+                // 4 MEN ON GIANT WEDDING CAKE, CUPCAKE & COFFEE MUG
+                const tier1 = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.7, 1.7, 1.2, 24),
+                    new THREE.MeshToonMaterial({ color: 0xfef08a })
+                );
+                const tier2 = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.2, 1.2, 1.1, 24),
+                    new THREE.MeshToonMaterial({ color: 0xf472b6 })
+                );
+                tier2.position.y = 1.15;
+                tier1.add(tier2);
+                tier1.castShadow = true;
+                activeProps.push(new LevelProp(tier1, new THREE.Vector3(1.1, 0.6, 0), 1.4, false));
+
+                const mug = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.15, 1.0, 2.0, 22),
+                    new THREE.MeshToonMaterial({ color: 0x38bdf8 })
+                );
+                mug.castShadow = true;
+                activeProps.push(new LevelProp(mug, new THREE.Vector3(4.5, 1.0, 0), 1.2, false));
+
+                const donut = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.0, 1.0, 0.7, 20),
+                    new THREE.MeshToonMaterial({ color: 0xf97316 })
+                );
+                activeProps.push(new LevelProp(donut, new THREE.Vector3(-0.9, 0.35, 0), 0.7, true));
+
+                activeTargets.push(new TargetMan({
+                    color: 0xec4899,
+                    task: 'dance',
+                    position: new THREE.Vector3(-0.9, 0.7, 0),
+                    scale: 0.9
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0x22c55e,
+                    task: 'fries_wave',
+                    position: new THREE.Vector3(1.1, 2.3, 0),
+                    scale: 0.92
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0xef4444,
+                    task: 'juggle',
+                    position: new THREE.Vector3(4.5, 2.0, 0),
+                    scale: 0.92
+                }));
+                activeTargets.push(new TargetMan({
+                    color: 0x6366f1,
+                    task: 'squat',
+                    position: new THREE.Vector3(6.6, 0.0, 0),
+                    scale: 0.95
+                }));
+
+            } else if (theme === 'circus') {
+                // 4 MEN IN CIRCUS SHOWDOWN
+                const colors = [0xef4444, 0xfacc15, 0x3b82f6, 0x10b981];
+                const tasks = ['juggle', 'dance', 'fries_wave', 'squat'];
+                const heights = [1.1, 2.3, 1.5, 2.9];
+
+                for (let i = 0; i < 4; i++) {
+                    const xPos = -0.2 + i * 2.2;
+                    const h = heights[i];
+                    const pillar = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.85, 0.95, h, 20),
+                        new THREE.MeshToonMaterial({ color: colors[(i + 1) % colors.length] })
+                    );
+                    pillar.castShadow = true;
+                    activeProps.push(new LevelProp(pillar, new THREE.Vector3(xPos, h / 2, 0), 0.9, false));
+
+                    activeTargets.push(new TargetMan({
+                        color: colors[i],
+                        task: tasks[i],
+                        position: new THREE.Vector3(xPos, h, 0),
+                        scale: 0.92
+                    }));
+                }
+
+            } else {
+                // 5 MEN TROPICAL BEACH PARTY SCENE!
+                const colors = [0xff1e1e, 0xfacc15, 0x06b6d4, 0xa855f7, 0x22c55e];
+                const tasks = ['dance', 'fries_wave', 'squat', 'juggle', 'jumping_jacks'];
+                const heights = [0.8, 1.8, 1.1, 2.5, 1.4];
+
+                for (let i = 0; i < 5; i++) {
+                    const xPos = -0.6 + i * 1.85;
+                    const h = heights[i];
+                    const block = new THREE.Mesh(
+                        new THREE.BoxGeometry(1.35, h, 1.35),
+                        new THREE.MeshToonMaterial({ color: colors[(i + 2) % colors.length] })
+                    );
+                    block.castShadow = true;
+                    activeProps.push(new LevelProp(block, new THREE.Vector3(xPos, h / 2, 0), 0.85, i % 2 === 0));
+
+                    activeTargets.push(new TargetMan({
+                        color: colors[i],
+                        task: tasks[i],
+                        position: new THREE.Vector3(xPos, h, 0),
+                        scale: 0.88
+                    }));
+                }
+            }
+
+            updateHUD();
+        }
+
+        /* ============================================================================
+         * 9. INPUT HANDLING (TAP / CLICK / SPACE TO SHOOT)
+         * ============================================================================ */
+        function fireWeapon() {
+            if (levelCleared) return;
+
+            sound.playGunshot();
+            shotsThisLevel++;
+
+            const { muzzlePos, dir } = gun.shoot();
+            spawnBullet(muzzlePos, dir);
+
+            // Hide initial tutorial badge after first shot
+            const hint = document.getElementById('tap-hint');
+            if (hint) hint.style.opacity = '0.35';
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            fireWeapon();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                fireWeapon();
+            } else if (e.code === 'KeyR') {
+                loadLevel(currentLevelIndex, currentDisplayLevel);
+            }
+        });
+
+        // UI Button Listeners
+        document.getElementById('btn-restart').addEventListener('click', (e) => {
+            e.stopPropagation();
+            loadLevel(currentLevelIndex, currentDisplayLevel);
+        });
+
+        document.getElementById('btn-sound').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isMuted = sound.toggleMute();
+            document.getElementById('icon-sound-on').classList.toggle('hidden', isMuted);
+            document.getElementById('icon-sound-off').classList.toggle('hidden', !isMuted);
+        });
+
+        document.getElementById('btn-skin').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const skinName = gun.cycleSkin();
+            document.getElementById('skin-badge').textContent = skinName.split(' ')[0].toUpperCase();
+            sound.playPropBounce(0.7);
+        });
+
+        document.getElementById('btn-next-level').addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentDisplayLevel++;
+            loadLevel(currentLevelIndex + 1, currentDisplayLevel);
+        });
+
+        // Scene / Level Picker Modal
+        const pickerModal = document.getElementById('level-picker-modal');
+        const levelGrid = document.getElementById('level-grid');
+
+        LEVEL_PRESETS.forEach((p, idx) => {
+            const btn = document.createElement('button');
+            btn.className = 'cartoon-box p-3 rounded-2xl text-left hover:bg-amber-50 flex flex-col justify-between';
+            btn.innerHTML = `
+                <span class="text-xs font-extrabold text-purple-600 uppercase">Level ${p.displayNum}</span>
+                <span class="text-sm font-extrabold text-slate-900 leading-tight mt-1">${p.title}</span>
+            `;
+            btn.addEventListener('click', () => {
+                pickerModal.classList.add('hidden');
+                loadLevel(idx, p.displayNum);
+            });
+            levelGrid.appendChild(btn);
+        });
+
+        document.getElementById('btn-level-select').addEventListener('click', (e) => {
+            e.stopPropagation();
+            pickerModal.classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-picker').addEventListener('click', (e) => {
+            e.stopPropagation();
+            pickerModal.classList.add('hidden');
+        });
+
+        /* ============================================================================
+         * 10. MAIN PHYSICS & COLLISION LOOP
+         * ============================================================================ */
+        function checkVictoryCondition() {
+            if (levelCleared) return;
+            const remaining = activeTargets.filter(t => !t.hit).length;
+            if (remaining === 0 && activeTargets.length > 0) {
+                levelCleared = true;
+                const earnedCoins = activeTargets.length * 25;
+                totalCoins += earnedCoins;
+                updateHUD();
+
+                setTimeout(() => {
+                    sound.playVictory();
+                    document.getElementById('stat-shots').textContent = shotsThisLevel;
+                    document.getElementById('stat-coins').textContent = `+${earnedCoins}`;
+                    document.getElementById('victory-summary').textContent =
+                        `All ${activeTargets.length} targets knocked down in ${LEVEL_PRESETS[currentLevelIndex % LEVEL_PRESETS.length].title}!`;
+                    document.getElementById('victory-modal').classList.remove('hidden');
+                }, 950);
+            }
+        }
+
+        let lastTime = performance.now();
+
+        function animate(now = performance.now()) {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min(0.033, (now - lastTime) / 1000);
+            lastTime = now;
+
+            // 1. Update Gun Physics
+            gun.update(dt);
+
+            // 2. Update Props Physics
+            for (let i = 0; i < activeProps.length; i++) {
+                activeProps[i].update(dt);
+            }
+
+            // 3. Update Animated Men / Ragdolls (passing gun & bullets for fearful eye tracking)
+            for (let i = 0; i < activeTargets.length; i++) {
+                activeTargets[i].update(dt, gun, bullets);
+            }
+
+            // 4. Update Bullets & Check Collisions with Men and Props
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                const prevPos = b.pos.clone();
+                b.pos.addScaledVector(b.vel, dt);
+                b.mesh.position.copy(b.pos);
+                b.life -= dt;
+
+                let bulletRemoved = false;
+
+                // Floor hit check
+                if (b.pos.y <= 0.15) {
+                    spawnParticles(b.pos, 0xffffff, 6, 4);
+                    sound.playBulletHit('asset');
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision against each target man (segment-sphere check for fast bullets)
+                for (let j = 0; j < activeTargets.length; j++) {
+                    const target = activeTargets[j];
+                    if (target.hit) continue;
+
+                    const center = target.getHitCenter();
+                    const seg = b.pos.clone().sub(prevPos);
+                    const segLen = seg.length();
+                    const segDir = seg.clone().normalize();
+                    const toCenter = center.clone().sub(prevPos);
+                    const proj = Math.max(0, Math.min(segLen, toCenter.dot(segDir)));
+                    const closestPoint = prevPos.clone().addScaledVector(segDir, proj);
+
+                    // Generous hitbox radius covering head, torso, and legs
+                    const dist = closestPoint.distanceTo(center);
+                    if (dist < 1.18 * target.scale) {
+                        target.triggerHit(segDir, 18);
+                        spawnParticles(closestPoint, target.color, 18, 8);
+
+                        totalHits++;
+                        totalCoins += 10;
+                        updateHUD();
+                        spawnFloatingText(center, 'HIT! +10', '#facc15');
+                        checkVictoryCondition();
+
+                        scene.remove(b.mesh);
+                        bullets.splice(i, 1);
+                        bulletRemoved = true;
+                        break;
+                    }
+                }
+
+                if (bulletRemoved) continue;
+
+                // Check collision against all level assets/props (both dynamic and stationary props)
+                for (let k = 0; k < activeProps.length; k++) {
+                    const prop = activeProps[k];
+                    const propCenter = prop.getHitCenter();
+                    const seg = b.pos.clone().sub(prevPos);
+                    const segLen = Math.max(0.0001, seg.length());
+                    const segDir = seg.clone().divideScalar(segLen);
+                    const toProp = propCenter.clone().sub(prevPos);
+                    const proj = Math.max(0, Math.min(segLen, toProp.dot(segDir)));
+                    const closestPt = prevPos.clone().addScaledVector(segDir, proj);
+
+                    if (closestPt.distanceTo(propCenter) < prop.radius * 0.92) {
+                        prop.applyImpulse(segDir, 6.5);
+                        spawnParticles(closestPt, 0xfde047, 10, 5.5);
+                        scene.remove(b.mesh);
+                        bullets.splice(i, 1);
+                        bulletRemoved = true;
+                        break;
+                    }
+                }
+
+                if (!bulletRemoved && b.life <= 0) {
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // 5. Update Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.vel.y -= 15 * dt;
+                p.mesh.position.addScaledVector(p.vel, dt);
+                p.life -= dt;
+                p.mesh.scale.setScalar(Math.max(0.01, p.life * 1.5));
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 6. Subtle smooth camera follow so the action always stays framed nicely
+            const targetCamX = -1.5 + THREE.MathUtils.clamp(gun.pos.x * 0.12, -1.2, 1.5);
+            camera.position.x += (targetCamX - camera.position.x) * 4 * dt;
+            camera.lookAt(defaultLookAt);
+
+            renderer.render(scene, camera);
+        }
+
+        // Responsive Canvas Resize Handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initialize Level 1 (Displays "Level 51" scene from your screenshot first!) and start loop
+        window.onload = function () {
+            loadLevel(0, 51);
+            animate();
+        };
+    </script>
+</body>
+</html>
