@@ -2972,6 +2972,8 @@
          * ============================================================================ */
         const MAN_COLORS = [0xf2b51e, 0xe01b24, 0x1c5fd8, 0x1e9e3e, 0x7b2fe0, 0xf2620f, 0xf0287e, 0x0099c2, 0x6aa80c, 0xa4148f, 0x34209a, 0x07a881, 0xb01020, 0xf7b500];
         const B = { HIP_Y: 1.06, SPINE: 0.14, NECK: 0.56, HEAD: 0.075, SH_X: 0.215, SH_Y: 0.49, UARM: 0.34, FARM: 0.32, HIP_X: 0.095, THIGH: 0.5, SHIN: 0.46 };
+        // Every character is drawn this much larger (body, tools, hit capsule and ragdoll all scale together)
+        const CHAR_SIZE = 1.4;
 
         function makeAppearance(rng, color, extra = {}) {
             return Object.assign({ color, scale: rng.range(1.04, 1.14), voice: rng.range(115, 175) }, extra);
@@ -3369,7 +3371,7 @@
                 P.y += press * 0.4;
                 P.knL = P.knR = 0.15 - press;
                 if (m.linkedBody && m.linkedBody.type === CANNON.Body.KINEMATIC) {
-                    m.linkedBody.position.y = m.linkedBase.y + press * 1.4;
+                    m.linkedBody.position.y = m.linkedBase.y + press * 1.4 * (m.scale / 1.1);
                 }
             } },
             barbell: { label: 'Overhead press', tool: 'barbell', mount: 'spread', anim(P, t) {
@@ -3633,7 +3635,7 @@
                 this.dead = false;
                 this.hit = false;
                 this.color = this.app.color;
-                this.scale = (this.app.scale || 1) * (cfg.scaleMul || 1);
+                this.scale = (this.app.scale || 1) * (cfg.scaleMul || 1) * CHAR_SIZE;
                 this.support = cfg.support || null;
                 this.walk = this.task.walk && cfg.walkRange ? { min: cfg.walkRange[0], max: cfg.walkRange[1], dir: Math.random() > 0.5 ? 1 : -1, speed: this.task.walk } : null;
                 this.facing = cfg.facing !== undefined ? cfg.facing : -0.35;
@@ -4111,19 +4113,10 @@
                     if (this.root.position.x < this.walk.min) this.walk.dir = 1;
                     const targetYaw = this.walk.dir > 0 ? 1.15 : -1.15;
                     this.root.rotation.y += (targetYaw - this.root.rotation.y) * Math.min(1, dt * 5);
-                    this.walkPhase += dt * this.walk.speed * 6.5;
+                    this.walkPhase += dt * this.walk.speed * 6.5 / CHAR_SIZE;
                 }
 
-                const P = this.P;
-                this.resetPose(P);
-                if (this.walk) walkLegs(P, this.walkPhase, 1);
-                this.task.anim(P, this.animTime, this);
-                if (this.walk && !this.task.tool) {
-                    P.shL[0] = Math.sin(this.walkPhase) * 0.4;
-                    P.shR[0] = -Math.sin(this.walkPhase) * 0.4;
-                }
-                this.applyPose(P);
-                this.placeSpreadTool();
+                this.workPose(this.animTime, this.walkPhase);
                 this.updateFace(dt, gunObj, activeBullets);
                 this.updateGoogly(dt);
                 this.updateSoft(dt);
@@ -4149,6 +4142,45 @@
                 const up = body.quaternion.vmult(new CANNON.Vec3(0, 1, 0));
                 const speed = body.velocity.length();
                 return up.y < 0.8 || this.root.position.y < this.support.startY - 0.3 || speed > 3.2;
+            }
+
+            // Pose the skeleton (and tool) for his job at animation time t
+            workPose(t, walkPhase) {
+                const P = this.P;
+                this.resetPose(P);
+                if (this.walk) walkLegs(P, walkPhase, 1);
+                this.task.anim(P, t, this);
+                if (this.walk && !this.task.tool) {
+                    P.shL[0] = Math.sin(walkPhase) * 0.4;
+                    P.shR[0] = -Math.sin(walkPhase) * 0.4;
+                }
+                this.applyPose(P);
+                this.placeSpreadTool();
+            }
+
+            // The box his body and tool sweep through while he works (whole walk included), found by
+            // playing his animation through, so the level layout can keep glass boxes and props clear of him
+            workBox() {
+                const box = new THREE.Box3();
+                const x0 = this.root.position.x, yaw0 = this.root.rotation.y;
+                const yaws = this.walk ? [-1.15, -0.6, 0, 0.6, 1.15] : [yaw0];
+                const samples = this.walk ? 16 : 48;
+                yaws.forEach((yaw) => {
+                    this.root.rotation.y = yaw;
+                    for (let k = 0; k < samples; k++) {
+                        this.workPose(this.animTime + k * 0.23, this.walkPhase + k * 0.9);
+                        this.root.updateMatrixWorld(true);
+                        this.bodyMeshes.forEach((m) => box.expandByObject(m));
+                        if (this.toolObj) box.expandByObject(this.toolObj);
+                    }
+                });
+                if (this.walk) {
+                    box.min.x += this.walk.min - x0;
+                    box.max.x += this.walk.max - x0;
+                }
+                this.root.rotation.y = yaw0;
+                this.workPose(this.animTime, this.walkPhase);
+                return box;
             }
 
             getHitCenter() {
@@ -4198,8 +4230,8 @@
                     if (b.pierce > 0) { b.pierce--; return 'pass'; }
                     return 'stop';
                 }
-                this._ray.set(hit.point.clone().addScaledVector(dir, -0.6), dir);
-                this._ray.far = 2.2;
+                this._ray.set(hit.point.clone().addScaledVector(dir, -0.55 * this.scale), dir);
+                this._ray.far = 2.0 * this.scale;
                 const precise = this.preciseHit(this._ray);
                 const part = precise ? precise.object.userData.part : this.partFromHeight(hit.point.y);
                 const point = precise ? precise.point : hit.point;
@@ -5076,9 +5108,10 @@
                 }
                 return { mesh: g, shapes: [shapeCyl(0.75, 1.45, 1.04, 0, 0, 0, 14)], mass: 1.8, w: 2.9, h: 1.04, d: 2.9, surface: 'food', colors: [0xe0952a, 0xfff3d6] };
             },
-            fries(r) {
+            fries(r, o = {}) {
                 const g = new THREE.Group();
                 const h = 2.05;
+                const pileTop = o.pileTop !== undefined ? o.pileTop : 1.0;
                 const box = new THREE.CylinderGeometry(1.55, 1.25, h, 40, 1, true);
                 g.add(mk(box, stdMat(0xffffff, { map: Tex.stripes(0xd62f25, 0xfacc15, 20, true), roughness: 0.6, side: THREE.DoubleSide }), 0, 0, 0));
                 g.add(mk(new THREE.CylinderGeometry(1.25, 1.25, 0.04, 30), stdMat(0xd62f25), 0, -h / 2 + 0.02, 0));
@@ -5092,7 +5125,7 @@
                     g.add(fry);
                 }
                 // Hollow carton: ring of wall panels + hidden fries pile inside for the worker to stand on
-                const shapes = [shapeCyl(1.05, 1.05, 1.0, 0, -0.525, 0, 14), shapeCyl(1.25, 1.25, 0.06, 0, -h / 2 + 0.03, 0, 14)];
+                const shapes = [shapeCyl(1.05, 1.05, pileTop, 0, -h / 2 + pileTop / 2, 0, 14), shapeCyl(1.25, 1.25, 0.06, 0, -h / 2 + 0.03, 0, 14)];
                 for (let i = 0; i < 10; i++) {
                     const a = i / 10 * Math.PI * 2;
                     const q = new CANNON.Quaternion();
@@ -5999,17 +6032,20 @@
             const base = new PhysProp(PROPS.burgerBase(r), new THREE.Vector3(0.35, 0.525, 0), { static: true });
             out.props.push(base);
             const bunSpec = PROPS.burgerTopBun(r);
-            const bun = new PhysProp(bunSpec, new THREE.Vector3(0.35, base.top + 2.62 + bunSpec.h / 2, 0), { kinematic: true });
+            // The bun rests on the red man's raised hands, so it sits higher for the bigger man
+            const bun = new PhysProp(bunSpec, new THREE.Vector3(0.35, base.top + 2.382 * 1.1 * CHAR_SIZE + bunSpec.h / 2, 0), { kinematic: true });
             out.props.push(bun);
             out.men.push(new Man({
                 appearance: makeAppearance(r, 0xe01b24, { scale: 1.1 }),
                 task: 'lift_bun', position: new THREE.Vector3(0.35, base.top, 0), facing: -0.3, linkedBody: bun.body, support: { body: base.body }
             }));
-            const fries = new PhysProp(PROPS.fries(r), new THREE.Vector3(2.95, 1.025, -0.3), { static: true });
+            // The yellow man keeps his waist at the same height above the rim: bigger body, lower feet
+            const friesFeet = 1.0 + B.HIP_Y * 1.08 * (1 - CHAR_SIZE);
+            const fries = new PhysProp(PROPS.fries(r, { pileTop: friesFeet }), new THREE.Vector3(2.95, 1.025, -0.3), { static: true });
             out.props.push(fries);
             out.men.push(new Man({
                 appearance: makeAppearance(r, 0xf2b51e, { scale: 1.08 }),
-                task: 'wave', position: new THREE.Vector3(2.75, 1.0, 0), facing: -0.35, support: { body: fries.body }
+                task: 'wave', position: new THREE.Vector3(2.9, friesFeet, 0), facing: -0.35, support: { body: fries.body }
             }));
             const crate = spawnLooseProp(r, 'crate', -6.6, 0, { w: 1.0, h: 1.0, d: 1.0 });
             out.props.push(crate);
@@ -6077,15 +6113,36 @@
                 { x: r.range(-6.8, -4.6), stand: 'stack' }
             ]);
             const usedX = [];
+            // The men are big: a glass box or loose prop that would touch one slides sideways to the
+            // nearest clear spot on its own side of the room (never removed, so coins and props stay the same)
+            const taken = out.men.map((m) => m.workBox());
+            const clearX = (x, hw, top) => {
+                const near = taken.filter((b) => b.min.y < top);
+                const free = (c) => near.every((b) => c + hw <= b.min.x || c - hw >= b.max.x);
+                let best = x;
+                if (!free(x)) {
+                    const [minX, maxX] = x < 0 ? [-8.9, -3.4] : [8.0, 10.4];
+                    let bestD = Infinity;
+                    near.forEach((b) => [b.min.x - hw - 0.05, b.max.x + hw + 0.05].forEach((c) => {
+                        if (c - hw >= minX && c + hw <= maxX && free(c) && Math.abs(c - x) < bestD) {
+                            best = c;
+                            bestD = Math.abs(c - x);
+                        }
+                    }));
+                }
+                taken.push(new THREE.Box3(new THREE.Vector3(best - hw, 0, 0), new THREE.Vector3(best + hw, top, 0)));
+                return best;
+            };
             for (let g = 0; g < glassCount && g < spots.length; g++) {
                 const s = spots[g];
                 if (usedX.some((ux) => Math.abs(ux - s.x) < 1.4)) continue;
                 usedX.push(s.x);
+                const x = clearX(s.x, s.stand === 'floor' ? 0.42 : 0.58, { floor: 0.82, crate: 1.82, stack: 2.72 }[s.stand]);
                 let baseY = 0;
-                if (s.stand === 'crate') baseY = platStack(r, s.x, 'crate', 1, { w: 1.0, h: 1.0, d: 1.0 }).top;
-                if (s.stand === 'stack') baseY = platStack(r, s.x, 'crate', 2, { w: 0.95, h: 0.95, d: 0.95 }).top;
+                if (s.stand === 'crate') baseY = platStack(r, x, 'crate', 1, { w: 1.0, h: 1.0, d: 1.0 }).top;
+                if (s.stand === 'stack') baseY = platStack(r, x, 'crate', 2, { w: 0.95, h: 0.95, d: 0.95 }).top;
                 const coins = clamp(6 + r.int(0, 4) + Math.floor(n / 5), 6, 16);
-                out.glass.push(new GlassBox(new THREE.Vector3(s.x, baseY + 0.41, 0), { coins, value: 5 }));
+                out.glass.push(new GlassBox(new THREE.Vector3(x, baseY + 0.41, 0), { coins, value: 5 }));
             }
 
             // Loose physical props scattered around (shoot them, they tumble and bounce)
@@ -6096,7 +6153,16 @@
                 const x = extraSpots[k];
                 if (usedX.some((ux) => Math.abs(ux - x) < 1.3)) continue;
                 usedX.push(x);
-                out.props.push(spawnLooseProp(r, r.pick(theme.extras), x, 0, { z: r.range(-1.2, 0.4), rotY: r.range(-0.5, 0.5) }));
+                const prop = spawnLooseProp(r, r.pick(theme.extras), x, 0, { z: r.range(-1.2, 0.4), rotY: r.range(-0.5, 0.5) });
+                const box = new THREE.Box3().setFromObject(prop.mesh);
+                const dx = clearX(x, Math.max(x - box.min.x, box.max.x - x), box.max.y) - x;
+                if (dx) {
+                    // Slide it before the first physics step
+                    prop.mesh.position.x += dx;
+                    prop.basePos.x += dx;
+                    [prop.body.position, prop.body.previousPosition, prop.body.interpolatedPosition, prop.body.initPosition].forEach((v) => { v.x += dx; });
+                }
+                out.props.push(prop);
                 placed++;
             }
         }
