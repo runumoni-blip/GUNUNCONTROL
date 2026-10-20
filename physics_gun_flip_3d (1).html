@@ -6116,8 +6116,8 @@
             // The men are big: a glass box or loose prop that would touch one slides sideways to the
             // nearest clear spot on its own side of the room (never removed, so coins and props stay the same)
             const taken = out.men.map((m) => m.workBox());
-            const clearX = (x, hw, top) => {
-                const near = taken.filter((b) => b.min.y < top);
+            const clearX = (x, hw, top, z0 = -hw, z1 = hw) => {
+                const near = taken.filter((b) => b.min.y < top && b.min.z < z1 && b.max.z > z0);
                 const free = (c) => near.every((b) => c + hw <= b.min.x || c - hw >= b.max.x);
                 let best = x;
                 if (!free(x)) {
@@ -6130,7 +6130,7 @@
                         }
                     }));
                 }
-                taken.push(new THREE.Box3(new THREE.Vector3(best - hw, 0, 0), new THREE.Vector3(best + hw, top, 0)));
+                taken.push(new THREE.Box3(new THREE.Vector3(best - hw, 0, z0), new THREE.Vector3(best + hw, top, z1)));
                 return best;
             };
             for (let g = 0; g < glassCount && g < spots.length; g++) {
@@ -6155,7 +6155,7 @@
                 usedX.push(x);
                 const prop = spawnLooseProp(r, r.pick(theme.extras), x, 0, { z: r.range(-1.2, 0.4), rotY: r.range(-0.5, 0.5) });
                 const box = new THREE.Box3().setFromObject(prop.mesh);
-                const dx = clearX(x, Math.max(x - box.min.x, box.max.x - x), box.max.y) - x;
+                const dx = clearX(x, Math.max(x - box.min.x, box.max.x - x), box.max.y, box.min.z, box.max.z) - x;
                 if (dx) {
                     // Slide it before the first physics step
                     prop.mesh.position.x += dx;
